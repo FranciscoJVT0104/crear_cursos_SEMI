@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Transformador Excel / CSV</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th,
+        td {
+            border: 1px solid #999;
+            padding: 4px;
+            font-size: 12px;
+        }
+
+        th {
+            background: #eee;
+            position: sticky;
+            top: 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Transformar Excel / CSV a Formato Lista</h2>
+
+    <input type="file" id="fileInput" />
+    <button onclick="procesar()">Procesar</button>
+    <button onclick="descargar()">Descargar CSV</button>
+    <button onclick="descargarCategorias()">Descargar CSV Categorías</button>
+
+    <h3>Vista previa del resultado</h3>
+    <div style="max-height:400px; overflow:auto;">
+        <table id="previewTable">
+            <thead></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <script>
+        function limpiarCelular(valor) {
+            if (!valor) return "";
+            return valor.toString().replace(/\D/g, "");
+        }
+
+        /* =======================
+           VARIABLES GLOBALES
+        ======================= */
+        let resultadoPreview = [];
+        let resultadoCategorias = [];
+
+        function U(val) {
+            if (val === null || val === undefined) return "";
+            return val
+                .toString()
+                .trim()
+                .toUpperCase();
+        }
+
+        /* =======================
+           TABLAS DE CONVERSIÓN
+        ======================= */
+        const turnos = {
+            M: "MAÑANA",
+            R: "MAÑANA",
+            H: "MAÑANA",
+            T: "TARDE",
+            N: "NOCHE",
+            P: "NOCHE",
+            L: "NOCHE"
+        };
+
+        function formatearDocente(nombre) {
+            if (!nombre || nombre.toString().trim() === "") {
+                return "SIN DOCENTE";
+            }
+            return `DOCENTE - ${nombre.toString().trim()}`;
+        }
+
+        function normalizarAula(aula) {
+            if (!aula) return "";
+            return aula
+                .toString()
+                .trim()
+                .toUpperCase()
+                .replace(/\s+/g, "")
+                .replace(/-/g, "");
+        }
+
+        function normalizarCiclo(valor) {
+            if (!valor) return "";
+
+            const romanos = {
+                "I": 1,
+                "II": 2,
+                "III": 3,
+                "IV": 4,
+                "V": 5,
+                "VI": 6
+            };
+
+            const v = valor.toString().trim().toUpperCase();
+
+            // Si es romano
+            if (romanos[v]) {
+                return romanos[v];
+            }
+
+            // Si ya es número
+            const num = parseInt(v, 10);
+            if (!isNaN(num) && num >= 1 && num <= 6) {
+                return num;
+            }
+
+            // Si no coincide, lo devuelve tal cual (para detectar errores)
+            return v;
+        }
+
+
+        function normalizarTurno(valor) {
+            if (!valor) {
+                return { corto: "", completo: "" };
+            }
+
+            const v = valor.toString().trim().toUpperCase();
+
+            // Turno real permitido
+            if (v === "M" || v === "R" ||  v === "H" ) {
+                return { corto: "M", completo: "MAÑANA" };
+            }
+
+            if (v === "T") {
+                return { corto: "T", completo: "TARDE" };
+            }
+
+            if (v === "N" || v === "P" || v === "L" ) {
+                return { corto: "N", completo: "NOCHE" };
+            }
+
+            // Fallback por si viene algo raro
+            return { corto: v, completo: v };
+        }
+
+        function obtenerDocentePorCurso(r, index, totalCursos) {
+
+            const docente1 = limpiarTexto(r["DOCENTE 1"]);
+            const docente2 = limpiarTexto(r["DOCENTE 2"]);
+
+            if (docente1 && docente2) {
+                return index === 0 ? docente1 : docente2;
+            }
+
+            if (docente1) return docente1;
+
+            if (docente2) return docente2;
+
+            return "";
+        }
+
+        function limpiarTexto(texto) {
+            if (!texto) return "";
+
+            return texto
+                .toString()
+                .trim()
+                .replace(/\s+/g, " "); // reemplaza múltiples espacios por uno solo
+        }
+
+        function obtenerTelefonoPorCurso(r, index, totalCursos) {
+
+            const tel1 = limpiarCelular(r["TELEFONO 1"]);
+            const tel2 = limpiarCelular(r["TELEFONO 2"]);
+
+            if (tel1 && tel2) {
+                return index === 0 ? tel1 : tel2;
+            }
+
+            if (tel1) return tel1;
+
+            if (tel2) return tel2;
+
+            return "";
+        }
+        /* =======================
+           FUNCIONES AUXILIARES
+        ======================= */
+        function normalizarLocal(valor) {
+            if (!valor) return { abrev: "UNK", full: "" };
+            valor = valor.toUpperCase().trim();
+            return locales[valor] || { abrev: "UNK", full: valor };
+        }
+
+        function primerasLetras(texto, n) {
+            if (!texto) return "";
+
+            return texto
+                .toString()
+                .trim()
+                .replace(/[^A-ZÁÉÍÓÚÜÑ ]/gi, "")
+                .substring(0, n)
+                .toUpperCase();
+        }
+
+
+        function csvCell(value) {
+            if (value === null || value === undefined) return "";
+            value = value.toString();
+            if (value.includes("|") || value.includes('"') || value.includes("\n")) {
+                value = value.replace(/"/g, '""');
+                return `"${value}"`;
+            }
+            return value;
+        }
+
+        function obtenerAulaPorCurso(r, index, totalCursos) {
+            if (totalCursos > 1) {
+                // Curso 1 → AULA
+                if (index === 0) return normalizarAula(r.AULA);
+
+                // Curso 2 → AULA2 o AULA si no existe
+                return normalizarAula(r.AULA2 || r.AULA);
+            }
+            // Solo un curso → AULA
+            return normalizarAula(r.AULA);
+        }
+
+        function descargarCategorias() {
+            if (resultadoCategorias.length === 0) {
+                alert("No hay datos de categorías");
+                return;
+            }
+
+            const csv = resultadoCategorias
+                .map(row => row.map(csvCell).join(";"))
+                .join("\n");
+
+            const BOM = "\uFEFF";
+            const blob = new Blob([BOM + csv], {
+                type: "text/csv;charset=utf-8;"
+            });
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "categorias PATH.csv";
+            a.click();
+        }
+
+        /* =======================
+           PROCESAMIENTO
+        ======================= */
+        function procesar() {
+            const file = document.getElementById("fileInput").files[0];
+            if (!file) return alert("Seleccione un archivo");
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: "array" });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                let rows = XLSX.utils.sheet_to_json(sheet);
+
+                resultadoPreview = [];
+                resultadoCategorias = [];
+
+                const headers = [
+                    "shortname", "fullname", "carrera_aula", "turno", "horario",
+                    "dni_docente", "docente", "celular_docente", "acceso_docente",
+                    "tutor", "numero_estudiantes", "url"
+                ];
+
+                resultadoPreview.push(headers);
+
+                resultadoCategorias.push([
+                    "category_path",
+                    "shortname",
+                    "fullname",
+                    "format",
+                    "templatecourse",
+                    "startdate",
+                    "enddate"
+                ]);
+
+                rows.forEach(r => {
+                    const turno = normalizarTurno(r.TURNO);
+
+                    const carreraLimpia = limpiarTexto(r.CARRERA);
+                    const carrera3 = primerasLetras(carreraLimpia, 3);
+
+                    const ciclo = normalizarCiclo(r.CICLO);
+                    const horario = r.horario || r.HORARIO || "";
+                    const cantidad = r.CANTIDAD || "";
+
+                    const cursos = [];
+
+                    // CURSO 1
+                    if (r["CURSO 1"]) {
+                        cursos.push({
+                            curso: limpiarTexto(r["CURSO 1"]),
+                        });
+                    }
+
+                    // CURSO 2
+                    if (r["CURSO 2"]) {
+                        cursos.push({
+                            curso: limpiarTexto(r["CURSO 2"]),
+                        });
+                    }
+
+                    cursos.forEach((c, i) => {
+                        const sufijo = cursos.length > 1 ? (i === 0 ? "-A" : "-B") : "";
+
+                        const aula = obtenerAulaPorCurso(r, i, cursos.length);
+                        const curso4 = primerasLetras(c.curso, 4);
+
+                        const docenteFinal = obtenerDocentePorCurso(r, i, cursos.length);
+                        const telefonoFinal = obtenerTelefonoPorCurso(r, i, cursos.length);
+
+                        const shortname =
+                            `AULA${aula}${turno.corto}${sufijo}-FEB26-${carrera3}-${ciclo}-${curso4}`;
+
+                        const nombreCurso = limpiarTexto(c.curso);
+                        const fullname = `AULA-${aula}${sufijo}-${carrera3}-${ciclo}-FEB26-${nombreCurso} (${turno.completo})`;
+
+                        resultadoPreview.push([
+                            U(shortname),
+                            U(fullname),
+                            U(carreraLimpia),
+                            U(turno.completo),
+                            U(horario),
+                            "",
+                            U(formatearDocente(docenteFinal)),
+                            U(telefonoFinal),
+                            "SI",
+                            "",
+                            U(cantidad),
+                            ""
+                        ]);
+
+                        // CSV de categorías
+                        resultadoCategorias.push([
+                            U(`2026 / FEBRERO / ${r.CARRERA} / ${ciclo}C`),
+                            U(shortname),
+                            U(fullname),
+                            "tiles",
+                            "MODZOOM2",
+                            "20260210",
+                            "0"
+                        ]);
+                    });
+                });
+
+                renderPreviewTable();
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        /* =======================
+           VISTA PREVIA
+        ======================= */
+        function renderPreviewTable() {
+            const table = document.getElementById("previewTable");
+            const thead = table.querySelector("thead");
+            const tbody = table.querySelector("tbody");
+
+            thead.innerHTML = "";
+            tbody.innerHTML = "";
+
+            const trHead = document.createElement("tr");
+            resultadoPreview[0].forEach(h => {
+                const th = document.createElement("th");
+                th.textContent = h;
+                trHead.appendChild(th);
+            });
+            thead.appendChild(trHead);
+
+            for (let i = 1; i < resultadoPreview.length; i++) {
+                const tr = document.createElement("tr");
+                resultadoPreview[i].forEach(cell => {
+                    const td = document.createElement("td");
+                    td.textContent = cell;
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            }
+        }
+
+        /* =======================
+           DESCARGA CSV UTF-8 BOM
+        ======================= */
+        function descargar() {
+            if (resultadoPreview.length === 0) {
+                alert("No hay datos procesados");
+                return;
+            }
+
+            const csv = resultadoPreview
+                .map(row => row.map(csvCell).join(";"))
+                .join("\n");
+
+            const BOM = "\uFEFF";
+            const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "cursos.csv";
+            a.click();
+        }
+    </script>
+
+</body>
+
+</html>
