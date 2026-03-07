@@ -135,7 +135,7 @@
             const v = valor.toString().trim().toUpperCase();
 
             // Turno real permitido
-            if (v === "M" || v === "R" ||  v === "H" ) {
+            if (v === "M" || v === "R" || v === "H") {
                 return { corto: "M", completo: "MAÑANA" };
             }
 
@@ -143,7 +143,7 @@
                 return { corto: "T", completo: "TARDE" };
             }
 
-            if (v === "N" || v === "P" || v === "L" ) {
+            if (v === "N" || v === "P" || v === "L") {
                 return { corto: "N", completo: "NOCHE" };
             }
 
@@ -327,10 +327,10 @@
                         const telefonoFinal = obtenerTelefonoPorCurso(r, i, cursos.length);
 
                         const shortname =
-                            `AULA${aula}${turno.corto}${sufijo}-FEB26-${carrera3}-${ciclo}-${curso4}`;
+                            `AULA${aula}${sufijo}-MAR26-${carrera3}-${ciclo}-${curso4}`;
 
                         const nombreCurso = limpiarTexto(c.curso);
-                        const fullname = `AULA-${aula}${sufijo}-${carrera3}-${ciclo}-FEB26-${nombreCurso} (${turno.completo})`;
+                        const fullname = `AULA${aula}${sufijo}-${carrera3}-${ciclo}-MAR26-${nombreCurso}`;
 
                         resultadoPreview.push([
                             U(shortname),
@@ -349,12 +349,12 @@
 
                         // CSV de categorías
                         resultadoCategorias.push([
-                            U(`2026 / FEBRERO / ${r.CARRERA} / ${ciclo}C`),
+                            U(`SEMIPRESENCIAL / 2026 / MARZO / ${r.CARRERA} / ${ciclo}C / ${turno.corto}`),
                             U(shortname),
                             U(fullname),
                             "tiles",
                             "MODZOOM2",
-                            "20260210",
+                            "20260313",
                             "0"
                         ]);
                     });
