@@ -185,8 +185,9 @@
         </div>
 
         <div class="controls" id="downloadControls" style="display: none;">
-            <button onclick="descargar()">Descargar CSV</button>
+            <button onclick="descargar()">Cursos</button>
             <button class="outline" onclick="descargarCategorias()">Categorías</button>
+            <button class="outline" onclick="descargarCategoryPath()">Solo Path</button>
         </div>
 
         <h3 style="font-family: 'Outfit'; margin-top: 0;">Vista previa</h3>
@@ -217,6 +218,7 @@
         ======================= */
         let resultadoPreview = [];
         let resultadoCategorias = [];
+        let globalCarrera3 = "";
 
         function U(val) {
             if (val === null || val === undefined) return "";
@@ -408,10 +410,35 @@
                 type: "text/csv;charset=utf-8;"
             });
 
+            const suffix = globalCarrera3 ? ` - ${globalCarrera3}` : "";
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = "categorias PATH.csv";
+            a.download = `categorias${suffix}.csv`;
+            a.click();
+        }
+
+        function descargarCategoryPath() {
+            if (resultadoCategorias.length === 0) {
+                alert("No hay datos de categorías");
+                return;
+            }
+
+            // Extract only the first column (category_path)
+            const csv = resultadoCategorias
+                .map(row => csvCell(row[0]))
+                .join("\n");
+
+            const BOM = "\uFEFF";
+            const blob = new Blob([BOM + csv], {
+                type: "text/csv;charset=utf-8;"
+            });
+
+            const suffix = globalCarrera3 ? ` - ${globalCarrera3}` : "";
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `paths${suffix}.csv`;
             a.click();
         }
 
@@ -447,6 +474,7 @@
 
                 resultadoPreview = [];
                 resultadoCategorias = [];
+                globalCarrera3 = ""; // Reset variable per processing run
 
                 const headers = [
                     "shortname", "fullname", "carrera_aula", "turno", "horario",
@@ -471,6 +499,7 @@
 
                     const carreraLimpia = limpiarTexto(r.CARRERA);
                     const carrera3 = primerasLetras(carreraLimpia, 3);
+                    if (!globalCarrera3 && carrera3) globalCarrera3 = carrera3; // Save for file naming
 
                     const ciclo = normalizarCiclo(r.CICLO);
                     const horario = r.horario || r.HORARIO || "";
@@ -607,9 +636,10 @@
             const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
             const url = URL.createObjectURL(blob);
 
+            const suffix = globalCarrera3 ? ` - ${globalCarrera3}` : "";
             const a = document.createElement("a");
             a.href = url;
-            a.download = "cursos.csv";
+            a.download = `cursos${suffix}.csv`;
             a.click();
         }
     </script>
