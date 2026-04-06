@@ -419,14 +419,20 @@
         }
 
         function descargarCategoryPath() {
-            if (resultadoCategorias.length === 0) {
+            if (resultadoCategorias.length <= 1) {
                 alert("No hay datos de categorías");
                 return;
             }
 
-            // Extract only the first column (category_path)
-            const csv = resultadoCategorias
-                .map(row => csvCell(row[0]))
+            // Extract only the first column (category_path) from data rows (skip header)
+            const allPaths = resultadoCategorias.slice(1).map(row => row[0]);
+            
+            // Filter unique paths
+            const uniquePaths = [...new Set(allPaths)];
+
+            // Create CSV starting with the header
+            const csv = ["category_path", ...uniquePaths]
+                .map(csvCell)
                 .join("\n");
 
             const BOM = "\uFEFF";
